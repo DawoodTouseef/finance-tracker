@@ -13,14 +13,31 @@ import { User, Settings, LogOut, Database } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export default function UserMenu() {
-  const { signOut } = useAuth();
-  const { user } = useUser();
+  // Check if we're in development mode
+  const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  
+  // Use mock data in development mode
+  const mockUser = {
+    imageUrl: '',
+    fullName: 'Test User',
+    firstName: 'Test',
+    lastName: 'User',
+    primaryEmailAddress: 'test@example.com'
+  };
+  
+  // Only use Clerk in production
+  const { signOut } = isDevelopment ? { signOut: () => {} } : useAuth();
+  const { user } = isDevelopment ? { user: mockUser } : useUser();
   const navigate = useNavigate();
 
   const handleSignOut = () => {
-    signOut(() => {
+    if (isDevelopment) {
       navigate('/');
-    });
+    } else {
+      signOut(() => {
+        navigate('/');
+      });
+    }
   };
 
   const getInitials = (firstName?: string, lastName?: string) => {

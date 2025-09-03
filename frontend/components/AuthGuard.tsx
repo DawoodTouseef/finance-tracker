@@ -10,6 +10,13 @@ interface AuthGuardProps {
 
 export default function AuthGuard({ children }: AuthGuardProps) {
   const { isSignedIn, isLoaded } = useAuth();
+  
+  // In development mode, bypass authentication
+  const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  
+  if (isDevelopment) {
+    return <>{children}</>;
+  }
 
   if (!isLoaded) {
     return (

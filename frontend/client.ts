@@ -1040,60 +1040,148 @@ class BaseClient {
 
     // callAPI is used by each generated API method to actually make the request
     public async callAPI(path: string, params?: CallParameters): Promise<Response> {
-        let { query, headers, ...rest } = params ?? {}
-        const init = {
-            ...this.requestInit,
-            ...rest,
-        }
-
-        // Merge our headers with any predefined headers
-        init.headers = {...this.headers, ...init.headers, ...headers}
-
-        // Fetch auth data if there is any
-        const authData = await this.getAuthData();
-
-        // If we now have authentication data, add it to the request
-        if (authData) {
-            if (authData.query) {
-                query = {...query, ...authData.query};
+        // Import utility functions for retries
+        const { withRetry, defaultShouldRetry } = await import('./utils/apiUtils');
+        
+        // Maximum number of retries for idempotent methods (GET, HEAD, OPTIONS)
+        const MAX_RETRIES = 3;
+        
+        // Function to determine if a request is idempotent based on method
+        const isIdempotent = (method?: string): boolean => {
+            if (!method) return true; // Default to GET which is idempotent
+            const idempotentMethods = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'];
+            return idempotentMethods.includes(method.toUpperCase());
+        };
+        
+        // The actual API call function
+        const makeApiCall = async (): Promise<Response> => {
+            let { query, headers, ...rest } = params ?? {}
+            const init = {
+                ...this.requestInit,
+                ...rest,
             }
-            if (authData.headers) {
-                init.headers = {...init.headers, ...authData.headers};
-            }
-        }
 
-        // Make the actual request
-        const queryString = query ? '?' + encodeQuery(query) : ''
-        const response = await this.fetcher(this.baseURL+path+queryString, init)
+            // Merge our headers with any predefined headers
+            init.headers = {...this.headers, ...init.headers, ...headers}
 
-        // handle any error responses
-        if (!response.ok) {
-            // try and get the error message from the response body
-            let body: APIErrorResponse = { code: ErrCode.Unknown, message: `request failed: status ${response.status}` }
+            // Fetch auth data if there is any
+            const authData = await this.getAuthData();
 
-            // if we can get the structured error we should, otherwise give a best effort
-            try {
-                const text = await response.text()
-
-                try {
-                    const jsonBody = JSON.parse(text)
-                    if (isAPIErrorResponse(jsonBody)) {
-                        body = jsonBody
-                    } else {
-                        body.message += ": " + JSON.stringify(jsonBody)
-                    }
-                } catch {
-                    body.message += ": " + text
+            // If we now have authentication data, add it to the request
+            if (authData) {
+                if (authData.query) {
+                    query = {...query, ...authData.query};
                 }
-            } catch (e) {
-                // otherwise we just append the text to the error message
-                body.message += ": " + String(e)
+                if (authData.headers) {
+                    init.headers = {...init.headers, ...authData.headers};
+                }
             }
 
-            throw new APIError(response.status, body)
-        }
+            // Set up the request with timeout
+            const timeoutMs = 30000; // 30 seconds timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            
+            try {
+                // Add the signal to the fetch request
+                init.signal = controller.signal;
+                
+                // Make the actual request
+                const queryString = query ? '?' + encodeQuery(query) : ''
+                const response = await this.fetcher(this.baseURL+path+queryString, init)
 
-        return response
+                // handle any error responses
+                if (!response.ok) {
+                    // try and get the error message from the response body
+                    let body: APIErrorResponse = { code: ErrCode.Unknown, message: `request failed: status ${response.status}` }
+
+                    // if we can get the structured error we should, otherwise give a best effort
+                    try {
+                        const text = await response.text()
+
+                        try {
+                            const jsonBody = JSON.parse(text)
+                            if (isAPIErrorResponse(jsonBody)) {
+                                body = jsonBody
+                            } else {
+                                body.message += ": " + JSON.stringify(jsonBody)
+                            }
+                        } catch {
+                            body.message += ": " + text
+                        }
+                    } catch (e) {
+                        // otherwise we just append the text to the error message
+                        body.message += ": " + String(e)
+                    }
+
+                    const apiError = new APIError(response.status, body);
+                    apiError.response = response;
+                    throw apiError;
+                }
+
+                return response;
+            } catch (error) {
+                // Handle abort errors (timeouts)
+                if (error instanceof DOMException && error.name === 'AbortError') {
+                    throw new APIError(0, { 
+                        code: ErrCode.DeadlineExceeded, 
+                        message: `Request timed out after ${timeoutMs}ms` 
+                    });
+                }
+                
+                // Handle network errors
+                if (error instanceof TypeError && error.message.includes('network')) {
+                    throw new APIError(0, { 
+                        code: ErrCode.Unavailable, 
+                        message: navigator.onLine 
+                            ? 'Network request failed. Please check your connection.'
+                            : 'You are currently offline. Please check your internet connection.'
+                    });
+                }
+                
+                // Re-throw API errors
+                if (error instanceof APIError) {
+                    throw error;
+                }
+                
+                // Handle other errors
+                throw new APIError(0, { 
+                    code: ErrCode.Unknown, 
+                    message: error instanceof Error ? error.message : String(error)
+                });
+            } finally {
+                // Clear the timeout to prevent memory leaks
+                clearTimeout(timeoutId);
+            }
+        };
+        
+        // Custom shouldRetry function that combines our logic with the default
+        const shouldRetry = (error: any): boolean => {
+            // Don't retry non-idempotent methods like POST to avoid duplicate operations
+            if (!isIdempotent(params?.method)) {
+                return false;
+            }
+            
+            // Don't retry authentication errors
+            if (error instanceof APIError && error.status === 401) {
+                return false;
+            }
+            
+            // Don't retry bad request errors
+            if (error instanceof APIError && error.status === 400) {
+                return false;
+            }
+            
+            // Use the default retry logic for other errors
+            return defaultShouldRetry(error);
+        };
+        
+        // Use retry for idempotent methods, otherwise just make a single call
+        if (isIdempotent(params?.method)) {
+            return withRetry(makeApiCall, MAX_RETRIES, 1000, shouldRetry);
+        } else {
+            return makeApiCall();
+        }
     }
 }
 
@@ -1138,6 +1226,16 @@ export class APIError extends Error {
      */
     public readonly details?: any
 
+    /**
+     * The original Response object if available
+     */
+    public response?: Response
+
+    /**
+     * Whether this is a network error (offline, timeout, etc.)
+     */
+    public readonly isNetworkError: boolean
+
     constructor(status: number, response: APIErrorResponse) {
         // extending errors causes issues after you construct them, unless you apply the following fixes
         super(response.message);
@@ -1149,6 +1247,14 @@ export class APIError extends Error {
             enumerable:   false,
             configurable: true,
         })
+
+        // Set properties
+        this.status = status;
+        this.code = response.code;
+        this.details = response.details;
+        this.isNetworkError = status === 0 || 
+            response.code === ErrCode.Unavailable || 
+            response.code === ErrCode.DeadlineExceeded;
 
         // fix the prototype chain
         if ((Object as any).setPrototypeOf == undefined) {

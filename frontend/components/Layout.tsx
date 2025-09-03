@@ -11,7 +11,8 @@ import {
   Tags,
   Lightbulb,
   Calendar,
-  Database
+  Database,
+  AlertCircle
 } from "lucide-react";
 import NotificationCenter from "./NotificationCenter";
 import UserMenu from "./UserMenu";
@@ -30,6 +31,7 @@ const navigation = [
   { name: "Reports", href: "/reports", icon: BarChart3 },
   { name: "Insights", href: "/insights", icon: Lightbulb },
   { name: "Backup", href: "/backup", icon: Database },
+  { name: "Error Handling Demo", href: "/error-handling-demo", icon: AlertCircle },
 ];
 
 export default function Layout({ children }: LayoutProps) {
