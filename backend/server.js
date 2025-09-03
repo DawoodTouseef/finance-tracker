@@ -1,11 +1,20 @@
 // Simple Express server to replace Encore
 import express from 'express';
 import cors from 'cors';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
 const app = express();
-const port = 4000;
+const port = process.env.PORT || 4000;
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from frontend/dist in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(join(__dirname, '../frontend/dist')));
+}
 
 // Mock authentication endpoint
 app.post('/auth/login', (req, res) => {
@@ -84,6 +93,13 @@ app.get('/notifications/budget-alerts', (req, res) => {
     { id: '2', message: 'Housing budget at 50% usage', date: new Date().toISOString(), read: false },
   ]);
 });
+
+// Add a catch-all route to serve the React app for any non-API routes in production
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(join(__dirname, '../frontend/dist/index.html'));
+  });
+}
 
 app.listen(port, () => {
   console.log(`Finance tracker backend running at http://localhost:${port}`);

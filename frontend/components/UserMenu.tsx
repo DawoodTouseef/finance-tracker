@@ -14,7 +14,7 @@ import { useNavigate } from "react-router-dom";
 
 export default function UserMenu() {
   // Check if we're in development mode
-  const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const isDevelopment = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
   
   // Use mock data in development mode
   const mockUser = {

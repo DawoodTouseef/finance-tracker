@@ -49,7 +49,7 @@ const queryClient = new QueryClient({
 });
 
 // Check if we're in development mode
-const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const isDevelopment = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
 // Only validate Clerk key in production
 if (!isDevelopment && !clerkPublishableKey) {

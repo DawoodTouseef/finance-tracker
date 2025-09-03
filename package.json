@@ -8,9 +8,13 @@
     "frontend"
   ],
   "scripts": {
-    "start": "concurrently \"cd backend && npm start\" \"cd frontend && npm run dev\""
+    "start": "concurrently \"cd backend && npm start\" \"cd frontend && npm run dev\"",
+    "build": "cd frontend && npm install && npm run build && cd ../backend && npm install"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "http-proxy-middleware": "^3.0.5"
   }
 }

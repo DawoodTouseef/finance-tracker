@@ -85,7 +85,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
                 </Button>
               </div>
               
-              {process.env.NODE_ENV !== 'production' && this.state.error && (
+              {(typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') && this.state.error && (
                 <div className="mt-6 p-4 bg-muted rounded-md text-left overflow-auto max-h-[300px] w-full">
                   <p className="font-mono text-sm mb-2">{this.state.error.toString()}</p>
                   {this.state.errorInfo && (

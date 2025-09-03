@@ -11,7 +11,7 @@ import type { CookieWithOptions } from "encore.dev/api";
  */
 export type BaseURL = string
 
-export const Local: BaseURL = "http://localhost:4000"
+export const Local: BaseURL = typeof window !== 'undefined' && window.location.hostname === 'localhost' ? "http://localhost:4000" : "/api"
 
 /**
  * Environment returns a BaseURL for calling the cloud environment with the given name.
